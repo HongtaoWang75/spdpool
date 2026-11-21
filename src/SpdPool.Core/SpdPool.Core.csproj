@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>SpdPool.Core</AssemblyName>
+    <RootNamespace>SpdPool.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

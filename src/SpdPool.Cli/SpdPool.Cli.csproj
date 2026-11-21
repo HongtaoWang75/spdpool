@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>spdpool</AssemblyName>
+    <RootNamespace>SpdPool.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SpdPool.Core\SpdPool.Core.csproj" />
+  </ItemGroup>
+</Project>
