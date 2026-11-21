@@ -385,8 +385,21 @@ internal sealed class PassthroughFs : FileSystemBase
 
 internal static class Program
 {
+    private static void LogCrash(string tag, object ex)
+    {
+        try
+        {
+            var p = Path.Combine(AppContext.BaseDirectory, "crash.log");
+            File.AppendAllText(p, $"{DateTime.Now:O} [{tag}] {ex}\n");
+        }
+        catch { }
+    }
+
     private static int Main(string[] args)
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash("unhandled", e.ExceptionObject);
+        TaskScheduler.UnobservedTaskException += (_, e) => { LogCrash("unobserved", e.Exception); e.SetObserved(); };
+
         string pass = null, mount = null;
         var serviceMode = false;
         for (int i = 0; i < args.Length; i++)

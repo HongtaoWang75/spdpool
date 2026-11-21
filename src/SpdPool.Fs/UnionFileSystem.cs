@@ -246,6 +246,7 @@ internal sealed class UnionFileSystem : FileSystemBase
         normalizedName = null;
         fi = default;
 
+        UnionDesc opened = null;
         try
         {
             var d = Find(fileName);
@@ -255,11 +256,13 @@ internal sealed class UnionFileSystem : FileSystemBase
                 d.Stream = new FileStream(d.Member.Full(fileName), FileMode.Open, FileAccess.ReadWrite,
                     FileShare.Read | FileShare.Write | FileShare.Delete, ALLOCATION_UNIT, FileOptions.None);
             }
+            opened = d;
             fileDesc = d;
             return GetInfo(d, out fi);
         }
         catch (Exception ex)
         {
+            opened?.Stream?.Dispose();
             return ExceptionHandler(ex);
         }
     }
