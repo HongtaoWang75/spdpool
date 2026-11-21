@@ -258,11 +258,12 @@ public sealed class MainWindow : Window
         {
             Minimum = 0,
             Maximum = 100,
-            Value = m.Online ? m.UsedPercent * 100 : 100,
+            Value = m.Online ? m.UsedPercent * 100 : 0,
             Height = 8,
             CornerRadius = new CornerRadius(4),
-            Foreground = m.Online ? UsageBrush(m.UsedPercent) : Red,
+            Foreground = UsageBrush(m.UsedPercent),
             Background = new SolidColorBrush(Color.Parse("#3A3D41")),
+            IsVisible = m.Online, // offline members have no meaningful usage
         };
 
         return new Border
