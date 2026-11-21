@@ -23,6 +23,7 @@ public sealed class MainWindow : Window
     private readonly TextBlock _poolSummary = new();
     private readonly TextBlock _nextTarget = new();
     private readonly TextBlock _ioStatus = new();
+    private readonly TextBlock _ioRate = new();
     private readonly DispatcherTimer _timer;
 
     public MainWindow()
@@ -57,6 +58,16 @@ public sealed class MainWindow : Window
             FontSize = 13,
             Foreground = TextDim,
         });
+
+        _ioRate.FontSize = 22;
+        _ioRate.FontWeight = FontWeight.Bold;
+        _ioRate.Foreground = Accent;
+        _ioRate.VerticalAlignment = VerticalAlignment.Center;
+
+        var topBar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        topBar.Children.Add(header);
+        Grid.SetColumn(_ioRate, 1);
+        topBar.Children.Add(_ioRate);
 
         _poolSummary.FontSize = 15;
         _poolSummary.Foreground = TextMain;
@@ -99,7 +110,7 @@ public sealed class MainWindow : Window
             Margin = new Thickness(28, 24),
             Children =
             {
-                header,
+                topBar,
                 summaryCard,
                 ioCard,
                 memberHeader,
@@ -139,7 +150,8 @@ public sealed class MainWindow : Window
                 var q = root.GetProperty("queueDepth").GetInt32();
                 var active = root.GetProperty("taskActive").GetBoolean();
                 var task = active ? root.GetProperty("task").GetString() : "无迁移任务";
-                _ioStatus.Text = $"读 {FmtRate(r)}  ·  写 {FmtRate(w)}  ·  队列 {q}  ·  {task}";
+                _ioRate.Text = $"↑ {FmtRate(w)}   ↓ {FmtRate(r)}";
+                _ioStatus.Text = $"队列 {q}  ·  {task}";
             }
             catch
             {
@@ -150,6 +162,23 @@ public sealed class MainWindow : Window
         {
             _ioStatus.Text = "刷新失败：" + ex.Message;
         }
+    }
+
+    private static Control Tag(string text, IBrush background = null)
+    {
+        return new Border
+        {
+            Background = background ?? new SolidColorBrush(Color.Parse("#3A3D41")),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 2),
+            Margin = new Thickness(0, 0, 6, 6),
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 11,
+                Foreground = TextMain,
+            },
+        };
     }
 
     private Control BuildMemberCard(MemberInfo m)
@@ -176,7 +205,7 @@ public sealed class MainWindow : Window
                 new TextBlock
                 {
                     Text = $"{m.Id}  {m.DiskName ?? "未知磁盘"}",
-                    FontSize = 16,
+                    FontSize = 18,
                     FontWeight = FontWeight.SemiBold,
                     Foreground = TextMain,
                 },
@@ -184,22 +213,17 @@ public sealed class MainWindow : Window
             },
         };
 
-        var info = new TextBlock
-        {
-            Text = m.Online
-                ? $"{m.MountPath}  ·  {GiB(m.TotalBytes)}  ·  可用 {GiB(m.FreeBytes)}"
-                : $"{m.MountPath}  ·  离线" + (m.Error != null ? $"（{m.Error}）" : ""),
-            FontSize = 12,
-            Foreground = TextDim,
-        };
-
         var healthText = m.DiskHealth ?? "未知";
-        var stats = new TextBlock
-        {
-            Text = $"健康度：{healthText}   ·   使用率：{(m.Online ? $"{m.UsedPercent * 100:F2}%" : "—")}",
-            FontSize = 12,
-            Foreground = m.DiskHealth == "Unhealthy" ? Red : TextDim,
-        };
+        var tags = new WrapPanel();
+        tags.Children.Add(Tag(m.Online
+            ? $"使用率 {m.UsedPercent * 100:F2}%"
+            : "离线",
+            m.Online ? null : Red));
+        tags.Children.Add(Tag($"容量 {GiB(m.TotalBytes)}"));
+        tags.Children.Add(Tag($"可用 {GiB(m.FreeBytes)}"));
+        tags.Children.Add(Tag($"健康 {healthText}",
+            m.DiskHealth == "Unhealthy" ? Red : null));
+        tags.Children.Add(Tag(m.MountPath));
 
         var bar = new ProgressBar
         {
@@ -219,8 +243,8 @@ public sealed class MainWindow : Window
             Padding = new Thickness(16, 12),
             Child = new StackPanel
             {
-                Spacing = 6,
-                Children = { title, info, stats, bar },
+                Spacing = 8,
+                Children = { title, tags, bar },
             },
         };
     }
