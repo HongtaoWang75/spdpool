@@ -461,7 +461,21 @@ internal static class Program
                     try { migrator.Stop(); host2.Unmount(); } catch { }
                 };
                 Console.WriteLine("service mode: waiting for stop signal");
-                stop.Wait();
+                var hb = Path.Combine(AppContext.BaseDirectory, "heartbeat.log");
+                var proc = System.Diagnostics.Process.GetCurrentProcess();
+                while (!stop.IsSet)
+                {
+                    // Loop instead of a bare Wait(): if the event returns unexpectedly we must
+                    // not fall through and silently unmount/exit the service under load.
+                    if (stop.Wait(TimeSpan.FromSeconds(30))) break;
+                    try
+                    {
+                        proc.Refresh();
+                        File.AppendAllText(hb,
+                            $"{DateTime.Now:O} pid={proc.Id} ws={proc.WorkingSet64 / 1048576}MB handles={proc.HandleCount} threads={proc.Threads.Count}\n");
+                    }
+                    catch { }
+                }
             }
             else
             {

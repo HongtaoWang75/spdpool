@@ -327,11 +327,15 @@ internal sealed class UnionFileSystem : FileSystemBase
             bytesTransferred = 0;
             return STATUS_END_OF_FILE;
         }
-        var bytes = new byte[length];
-        d.Stream.Seek((long)offset, SeekOrigin.Begin);
-        var read = d.Stream.Read(bytes, 0, bytes.Length);
-        Marshal.Copy(bytes, 0, buffer, read);
-        bytesTransferred = (uint)read;
+        var bytes = System.Buffers.ArrayPool<byte>.Shared.Rent((int)length);
+        try
+        {
+            d.Stream.Seek((long)offset, SeekOrigin.Begin);
+            var read = d.Stream.Read(bytes, 0, (int)length);
+            Marshal.Copy(bytes, 0, buffer, read);
+            bytesTransferred = (uint)read;
+        }
+        finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
         HeatTracker.Touch(d.RelPath);
         return STATUS_SUCCESS;
     }
@@ -351,11 +355,15 @@ internal sealed class UnionFileSystem : FileSystemBase
             if (offset + length > (ulong)d.Stream.Length)
                 length = (uint)((ulong)d.Stream.Length - offset);
         }
-        var bytes = new byte[length];
-        Marshal.Copy(buffer, bytes, 0, bytes.Length);
-        if (!writeToEndOfFile) d.Stream.Seek((long)offset, SeekOrigin.Begin);
-        d.Stream.Write(bytes, 0, bytes.Length);
-        bytesTransferred = (uint)bytes.Length;
+        var bytes = System.Buffers.ArrayPool<byte>.Shared.Rent((int)length);
+        try
+        {
+            Marshal.Copy(buffer, bytes, 0, (int)length);
+            if (!writeToEndOfFile) d.Stream.Seek((long)offset, SeekOrigin.Begin);
+            d.Stream.Write(bytes, 0, (int)length);
+        }
+        finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
+        bytesTransferred = length;
         HeatTracker.Touch(d.RelPath);
         return GetInfo(d, out fi);
     }
