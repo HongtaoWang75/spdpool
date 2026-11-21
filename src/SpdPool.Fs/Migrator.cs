@@ -63,12 +63,16 @@ internal sealed class Migrator
 
         files.Sort((a, b) => a.Heat != b.Heat ? a.Heat.CompareTo(b.Heat) : a.Access.CompareTo(b.Access));
 
+        int remaining = files.Count;
         foreach (var f in files)
         {
+            remaining--;
             if (_stop || UsagePercent(ssd) < LowWaterPercent) break;
             var target = hdds.OrderByDescending(FreePercent).First();
             try
             {
+                PoolStats.TaskActive = true;
+                PoolStats.TaskText = $"正在将 {f.Size / 1048576.0:F1} MB 从 {ssd.Id} 迁移至 {target.Id}：{Path.GetFileName(f.Rel)}（剩余 {remaining} 个文件）";
                 var dst = target.Full(f.Rel);
                 var dir = Path.GetDirectoryName(dst);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -80,6 +84,8 @@ internal sealed class Migrator
             }
             catch { /* open file or transient error: skip */ }
         }
+        PoolStats.TaskActive = false;
+        PoolStats.TaskText = "";
     }
 
     private static double UsagePercent(MemberFs m)

@@ -324,6 +324,16 @@ internal sealed class UnionFileSystem : FileSystemBase
     public override int Read(object fileNode, object fileDesc, IntPtr buffer, ulong offset, uint length,
         out uint bytesTransferred)
     {
+        PoolStats.EnterIo();
+        try
+        {
+            return ReadCore(fileDesc, buffer, offset, length, out bytesTransferred);
+        }
+        finally { PoolStats.ExitIo(); }
+    }
+
+    private int ReadCore(object fileDesc, IntPtr buffer, ulong offset, uint length, out uint bytesTransferred)
+    {
         var d = (UnionDesc)fileDesc;
         if (d.Stream == null || offset >= (ulong)d.Stream.Length)
         {
@@ -337,6 +347,7 @@ internal sealed class UnionFileSystem : FileSystemBase
             var read = d.Stream.Read(bytes, 0, (int)length);
             Marshal.Copy(bytes, 0, buffer, read);
             bytesTransferred = (uint)read;
+            PoolStats.OnRead(read);
         }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
         HeatTracker.Touch(d.RelPath);
@@ -344,6 +355,17 @@ internal sealed class UnionFileSystem : FileSystemBase
     }
 
     public override int Write(object fileNode, object fileDesc, IntPtr buffer, ulong offset, uint length,
+        bool writeToEndOfFile, bool constrainedIo, out uint bytesTransferred, out FileInfo fi)
+    {
+        PoolStats.EnterIo();
+        try
+        {
+            return WriteCore(fileDesc, buffer, offset, length, writeToEndOfFile, constrainedIo, out bytesTransferred, out fi);
+        }
+        finally { PoolStats.ExitIo(); }
+    }
+
+    private int WriteCore(object fileDesc, IntPtr buffer, ulong offset, uint length,
         bool writeToEndOfFile, bool constrainedIo, out uint bytesTransferred, out FileInfo fi)
     {
         var d = (UnionDesc)fileDesc;
@@ -364,6 +386,7 @@ internal sealed class UnionFileSystem : FileSystemBase
             Marshal.Copy(buffer, bytes, 0, (int)length);
             if (!writeToEndOfFile) d.Stream.Seek((long)offset, SeekOrigin.Begin);
             d.Stream.Write(bytes, 0, (int)length);
+            PoolStats.OnWrite((int)length);
         }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
         bytesTransferred = length;

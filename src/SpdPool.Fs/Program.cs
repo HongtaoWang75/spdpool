@@ -449,7 +449,9 @@ internal static class Program
                 return 1;
             }
             var migrator = new Migrator(members);
-            if (args.Contains("--tiering")) migrator.Start();
+            migrator.Start(); // SSD tiering is on by default so the UI can show tasks
+            var statsWriter = new StatsWriter();
+            statsWriter.Start();
             Console.WriteLine($"mounted {host2.MountPoint()} -> union of {string.Join(", ", members.Select(m => m.Id))}");
 
             if (serviceMode)
@@ -483,6 +485,7 @@ internal static class Program
                 Console.ReadLine();
             }
 
+            statsWriter.Stop();
             migrator.Stop();
             host2.Unmount();
             return 0;

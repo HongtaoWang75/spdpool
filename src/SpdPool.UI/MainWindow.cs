@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -21,7 +22,7 @@ public sealed class MainWindow : Window
     private readonly StackPanel _membersPanel = new() { Spacing = 10 };
     private readonly TextBlock _poolSummary = new();
     private readonly TextBlock _nextTarget = new();
-    private readonly TextBlock _footer = new();
+    private readonly TextBlock _ioStatus = new();
     private readonly DispatcherTimer _timer;
 
     public MainWindow()
@@ -34,7 +35,7 @@ public sealed class MainWindow : Window
         Background = Bg;
         Content = BuildLayout();
 
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();
         Refresh();
@@ -76,11 +77,12 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 8, 0, 0),
         };
 
+        _ioStatus.FontSize = 13;
+        _ioStatus.FontWeight = FontWeight.SemiBold;
+        _ioStatus.Foreground = Accent;
+
         _nextTarget.FontSize = 13;
         _nextTarget.Foreground = TextDim;
-
-        _footer.FontSize = 12;
-        _footer.Foreground = TextDim;
 
         var panel = new StackPanel
         {
@@ -92,8 +94,8 @@ public sealed class MainWindow : Window
                 summaryCard,
                 memberHeader,
                 _membersPanel,
+                _ioStatus,
                 _nextTarget,
-                _footer,
             },
         };
 
@@ -117,11 +119,27 @@ public sealed class MainWindow : Window
             _nextTarget.Text = pick == null
                 ? "没有在线成员"
                 : $"新文件将写入：{pick.Id}（{pick.MountPath}）";
-            _footer.Text = $"每 2 秒自动刷新 · {DateTime.Now:HH:mm:ss}";
+
+            try
+            {
+                var json = File.ReadAllText(@"C:\ProgramData\SpdPool\stats.json");
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var r = root.GetProperty("readBytesPerSec").GetInt64();
+                var w = root.GetProperty("writeBytesPerSec").GetInt64();
+                var q = root.GetProperty("queueDepth").GetInt32();
+                var active = root.GetProperty("taskActive").GetBoolean();
+                var task = active ? root.GetProperty("task").GetString() : "无迁移任务";
+                _ioStatus.Text = $"读 {FmtRate(r)}  ·  写 {FmtRate(w)}  ·  队列 {q}  ·  {task}";
+            }
+            catch
+            {
+                _ioStatus.Text = "统计不可用（服务未运行或 stats.json 未生成）";
+            }
         }
         catch (Exception ex)
         {
-            _footer.Text = "刷新失败：" + ex.Message;
+            _ioStatus.Text = "刷新失败：" + ex.Message;
         }
     }
 
@@ -167,10 +185,9 @@ public sealed class MainWindow : Window
         };
 
         var healthText = m.DiskHealth ?? "未知";
-        var tempText = m.TemperatureCelsius.HasValue ? $"{m.TemperatureCelsius} °C" : "N/A";
         var stats = new TextBlock
         {
-            Text = $"健康度：{healthText}   ·   温度：{tempText}   ·   使用率：{(m.Online ? $"{m.UsedPercent * 100:F2}%" : "—")}",
+            Text = $"健康度：{healthText}   ·   使用率：{(m.Online ? $"{m.UsedPercent * 100:F2}%" : "—")}",
             FontSize = 12,
             Foreground = m.DiskHealth == "Unhealthy" ? Red : TextDim,
         };
@@ -203,6 +220,11 @@ public sealed class MainWindow : Window
         used >= 0.85 ? Red : used >= 0.70 ? Orange : Green;
 
     private static string GiB(long bytes) => $"{bytes / 1073741824.0:F1} GB";
+
+    private static string FmtRate(long bytesPerSec) =>
+        bytesPerSec >= 1048576 ? $"{bytesPerSec / 1048576.0:F1} MB/s"
+        : bytesPerSec >= 1024 ? $"{bytesPerSec / 1024.0:F1} KB/s"
+        : $"{bytesPerSec} B/s";
 
     private static double UsedPercent(MemberRegistry reg) =>
         reg.TotalBytes > 0 ? (reg.TotalBytes - reg.FreeBytes) * 100.0 / reg.TotalBytes : 0;
