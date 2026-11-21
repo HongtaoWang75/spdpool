@@ -93,13 +93,41 @@ public sealed class MainWindow : Window
         _ioStatus.FontWeight = FontWeight.SemiBold;
         _ioStatus.Foreground = Accent;
         _ioStatus.TextWrapping = TextWrapping.Wrap;
+        _ioStatus.VerticalAlignment = VerticalAlignment.Center;
+
+        var balanceBtn = new Button
+        {
+            Content = "手动均衡",
+            Padding = new Thickness(12, 4),
+            Margin = new Thickness(12, 0, 0, 0),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        balanceBtn.Click += (_, _) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(@"C:\ProgramData\SpdPool");
+                File.WriteAllText(@"C:\ProgramData\SpdPool\migrate.trigger", DateTime.Now.ToString("O"));
+                _ioStatus.Text = "已请求手动均衡…";
+            }
+            catch (Exception ex)
+            {
+                _ioStatus.Text = "请求失败：" + ex.Message;
+            }
+        };
+
+        var ioPanel = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(balanceBtn, Dock.Right);
+        ioPanel.Children.Add(balanceBtn);
+        ioPanel.Children.Add(_ioStatus);
 
         var ioCard = new Border
         {
             Background = Card,
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(16, 10),
-            Child = _ioStatus,
+            Child = ioPanel,
         };
 
         _nextTarget.FontSize = 13;

@@ -14,6 +14,7 @@ internal sealed class Migrator
 
     public const int HighWaterPercent = 85;
     public const int LowWaterPercent = 75;
+    public const string TriggerPath = @"C:\ProgramData\SpdPool\migrate.trigger";
 
     public Migrator(IEnumerable<MemberFs> members)
     {
@@ -29,16 +30,26 @@ internal sealed class Migrator
     {
         while (!_stop)
         {
-            try { Tick(); } catch { }
+            var manual = false;
+            try
+            {
+                if (File.Exists(TriggerPath)) { File.Delete(TriggerPath); manual = true; }
+            }
+            catch { }
+            try { Tick(manual); } catch { }
             for (int i = 0; i < 60 && !_stop; i++) Thread.Sleep(1000);
         }
     }
 
-    private void Tick()
+    private void Tick(bool force = false)
     {
         var ssd = _members.FirstOrDefault(m => m.IsSsd);
         if (ssd == null) return;
-        if (UsagePercent(ssd) < HighWaterPercent) return;
+        var usage = UsagePercent(ssd);
+        if (!force && usage < HighWaterPercent) return;
+        // Manual trigger still only moves data when the SSD tier is above the low watermark;
+        // below that there is nothing to balance.
+        if (force && usage < LowWaterPercent) return;
 
         var hdds = _members.Where(m => !m.IsSsd).ToList();
         if (hdds.Count == 0) return;
