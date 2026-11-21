@@ -126,12 +126,14 @@ public sealed class MemberRegistry
                 new ObjectQuery("SELECT DeviceId,FriendlyName,HealthStatus,Size FROM MSFT_PhysicalDisk"));
             foreach (ManagementObject mo in searcher.Get())
             {
+                var devId = mo["DeviceId"]?.ToString();
                 list.Add(new PhysicalDisk
                 {
-                    DeviceId = mo["DeviceId"]?.ToString(),
+                    DeviceId = devId,
                     Name = mo["FriendlyName"]?.ToString(),
                     Health = mo["HealthStatus"] is ushort h ? h : 5,
                     Size = Convert.ToInt64(mo["Size"] ?? 0L),
+                    Temperature = int.TryParse(devId, out var dn) ? QueryTemperature(dn) : null,
                 });
             }
         }
@@ -158,6 +160,67 @@ public sealed class MemberRegistry
         catch { }
 
         return list;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STORAGE_PROPERTY_QUERY
+    {
+        public uint PropertyId;
+        public uint QueryType;
+        public uint AdditionalParameters;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STORAGE_TEMPERATURE_DATA_DESCRIPTOR
+    {
+        public uint Version;
+        public uint Size;
+        public ushort CriticalTemperature;
+        public ushort WarningTemperature;
+        public ushort InfoCount;
+        public ushort Reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STORAGE_TEMPERATURE_INFO
+    {
+        public ushort Index;
+        public ushort Temperature;
+        public ushort OverTemperature;
+        public ushort Reserved;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool DeviceIoControl(IntPtr hDevice, uint ioControlCode,
+        IntPtr inBuffer, uint inBufferSize, IntPtr outBuffer, uint outBufferSize,
+        out uint bytesReturned, IntPtr overlapped);
+
+    /// <summary>Windows 10+ storage temperature IOCTL (no smartctl required).</summary>
+    private static int? QueryTemperature(int diskNumber)
+    {
+        IntPtr inBuf = IntPtr.Zero, outBuf = IntPtr.Zero;
+        try
+        {
+            using var h = File.Open($@"\\.\PhysicalDrive{diskNumber}", FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var query = new STORAGE_PROPERTY_QUERY { PropertyId = 49 /* StorageDeviceTemperatureProperty */ };
+            inBuf = Marshal.AllocHGlobal(Marshal.SizeOf<STORAGE_PROPERTY_QUERY>());
+            outBuf = Marshal.AllocHGlobal(1024);
+            Marshal.StructureToPtr(query, inBuf, false);
+            if (!DeviceIoControl(h.SafeFileHandle.DangerousGetHandle(), 0x002D1400,
+                    inBuf, (uint)Marshal.SizeOf<STORAGE_PROPERTY_QUERY>(), outBuf, 1024, out _, IntPtr.Zero))
+                return null;
+            var desc = Marshal.PtrToStructure<STORAGE_TEMPERATURE_DATA_DESCRIPTOR>(outBuf);
+            if (desc.InfoCount == 0) return null;
+            var info = Marshal.PtrToStructure<STORAGE_TEMPERATURE_INFO>(
+                IntPtr.Add(outBuf, Marshal.SizeOf<STORAGE_TEMPERATURE_DATA_DESCRIPTOR>()));
+            return info.Temperature is > 0 and < 120 ? info.Temperature : null;
+        }
+        catch { return null; }
+        finally
+        {
+            if (inBuf != IntPtr.Zero) Marshal.FreeHGlobal(inBuf);
+            if (outBuf != IntPtr.Zero) Marshal.FreeHGlobal(outBuf);
+        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]

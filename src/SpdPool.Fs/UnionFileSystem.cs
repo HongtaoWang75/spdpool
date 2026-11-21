@@ -130,8 +130,11 @@ internal sealed class UnionFileSystem : FileSystemBase
 
     private MemberFs ChooseMember()
     {
+        // SSD is a hot tier, not a capacity sink: stop writing to it below 15% free.
         var ssd = _members.Where(m => m.IsSsd).OrderByDescending(m => m.FreeBytes()).FirstOrDefault();
-        return ssd ?? _members.OrderByDescending(m => m.FreeBytes()).First();
+        if (ssd != null && ssd.FreeBytes() >= 15) return ssd;
+        return _members.Where(m => !m.IsSsd).OrderByDescending(m => m.FreeBytes()).First()
+               ?? ssd ?? _members[0];
     }
 
     public override int Init(object host0)
