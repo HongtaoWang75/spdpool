@@ -80,6 +80,15 @@ public sealed class MainWindow : Window
         _ioStatus.FontSize = 13;
         _ioStatus.FontWeight = FontWeight.SemiBold;
         _ioStatus.Foreground = Accent;
+        _ioStatus.TextWrapping = TextWrapping.Wrap;
+
+        var ioCard = new Border
+        {
+            Background = Card,
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16, 10),
+            Child = _ioStatus,
+        };
 
         _nextTarget.FontSize = 13;
         _nextTarget.Foreground = TextDim;
@@ -92,9 +101,9 @@ public sealed class MainWindow : Window
             {
                 header,
                 summaryCard,
+                ioCard,
                 memberHeader,
                 _membersPanel,
-                _ioStatus,
                 _nextTarget,
             },
         };
