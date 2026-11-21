@@ -440,7 +440,8 @@ internal static class Program
                 IsSsd = m.IsSsd,
             }).ToList();
 
-            var debugLog2 = Path.Combine(Path.GetTempPath(), "spdpool-fs-debug.log");
+            var debugLog2 = @"C:\ProgramData\SpdPool\fs-debug.log";
+            try { Directory.CreateDirectory(@"C:\ProgramData\SpdPool"); } catch { }
             FileSystemHost.SetDebugLogFile(debugLog2);
             var host2 = new FileSystemHost(new UnionFileSystem(members));
             if (0 > host2.Mount(mount, null, true, 0xFFFFFFFF))

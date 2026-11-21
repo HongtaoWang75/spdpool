@@ -14,9 +14,9 @@ public sealed class MemberRegistry
 
     private static readonly (string Id, string Name)[] DefaultMembers =
     {
-        ("m1", "m1"),
-        ("m2", "m2"),
-        ("m3", "m3"),
+        ("HDD0", "HDD0"),
+        ("HDD1", "HDD1"),
+        ("SSD0", "SSD0"),
     };
 
     private sealed class PhysicalDisk
@@ -35,8 +35,9 @@ public sealed class MemberRegistry
     public IReadOnlyList<MemberInfo> Members => _members;
     public IReadOnlyList<MemberInfo> OnlineMembers => _members.Where(m => m.Online).ToList();
 
-    public static MemberRegistry ProbeDefault(bool ssdOnM3 = true) =>
-        Probe(DefaultMembers.Select(m => (m.Id, Path.Combine(DefaultMountRoot, m.Name), ssdOnM3 && m.Id == "m3")));
+    public static MemberRegistry ProbeDefault() =>
+        Probe(DefaultMembers.Select(m => (m.Id, Path.Combine(DefaultMountRoot, m.Name),
+            m.Name.StartsWith("SSD", StringComparison.OrdinalIgnoreCase))));
 
     public static MemberRegistry Probe(IEnumerable<(string Id, string Path, bool IsSsd)> members)
     {
@@ -64,6 +65,7 @@ public sealed class MemberRegistry
         var disks = QueryPhysicalDisks().OrderByDescending(d => d.Size).ToList();
         var used = new HashSet<PhysicalDisk>();
         var list = new List<MemberInfo>();
+        int hddIndex = 0, ssdIndex = 0;
 
         foreach (var p in probes.OrderByDescending(x => x.Total))
         {
@@ -73,9 +75,11 @@ public sealed class MemberRegistry
                 disk = disks.FirstOrDefault(d => !used.Contains(d) && d.Size >= p.Total && d.Size <= p.Total * 1.15);
                 if (disk != null) used.Add(disk);
             }
+            // Semantic member id: SSD0 / HDD0 / HDD1 ... (mount path stays m1..m3)
+            var id = p.IsSsd ? $"SSD{ssdIndex++}" : $"HDD{hddIndex++}";
             list.Add(new MemberInfo
             {
-                Id = p.Id,
+                Id = id,
                 MountPath = p.Mount,
                 BackendPath = p.Backend,
                 TotalBytes = p.Total,
