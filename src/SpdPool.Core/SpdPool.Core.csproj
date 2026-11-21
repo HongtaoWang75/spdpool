@@ -3,4 +3,7 @@
     <AssemblyName>SpdPool.Core</AssemblyName>
     <RootNamespace>SpdPool.Core</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using System.Management;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -18,6 +19,15 @@ public sealed class MemberRegistry
         ("m3", "m3"),
     };
 
+    private sealed class PhysicalDisk
+    {
+        public string? DeviceId;
+        public string? Name;
+        public int Health;          // 0 Healthy, 1 Warning, 2 Unhealthy, 5 Unknown
+        public long Size;
+        public int? Temperature;
+    }
+
     private readonly List<MemberInfo> _members;
 
     private MemberRegistry(List<MemberInfo> members) => _members = members;
@@ -30,51 +40,61 @@ public sealed class MemberRegistry
 
     public static MemberRegistry Probe(IEnumerable<(string Id, string Path, bool IsSsd)> members)
     {
-        var list = new List<MemberInfo>();
+        var probes = new List<(string Id, string Mount, string Backend, long Total, long Free, bool IsSsd, string? Error)>();
         foreach (var (id, mountPath, isSsd) in members)
         {
             if (!Directory.Exists(mountPath))
             {
-                list.Add(new MemberInfo
-                {
-                    Id = id, MountPath = mountPath, BackendPath = mountPath,
-                    IsSsd = isSsd, Online = false, Error = "mount path missing",
-                });
+                probes.Add((id, mountPath, mountPath, 0, 0, isSsd, "mount path missing"));
                 continue;
             }
             try
             {
                 var (total, free) = GetSpace(mountPath);
-                // WinFsp cannot use a volume mount point as the backing root (Create "\" fails
-                // with STATUS_OBJECT_PATH_NOT_FOUND). Resolve to the volume GUID path instead.
                 var backend = ResolveVolumeGuid(mountPath) ?? mountPath;
-                list.Add(new MemberInfo
-                {
-                    Id = id,
-                    MountPath = mountPath,
-                    BackendPath = backend,
-                    TotalBytes = total,
-                    FreeBytes = free,
-                    IsSsd = isSsd,
-                    Online = total > 0,
-                    Error = total > 0 ? null : "GetDiskFreeSpaceEx failed",
-                });
+                probes.Add((id, mountPath, backend, total, free, isSsd, total > 0 ? null : "GetDiskFreeSpaceEx failed"));
             }
             catch (Exception ex)
             {
-                list.Add(new MemberInfo
-                {
-                    Id = id, MountPath = mountPath, BackendPath = mountPath,
-                    IsSsd = isSsd, Online = false, Error = ex.Message,
-                });
+                probes.Add((id, mountPath, mountPath, 0, 0, isSsd, ex.Message));
             }
         }
-        return new MemberRegistry(list);
+
+        // Match members to physical disks by size (largest first), then attach name/health/temp.
+        var disks = QueryPhysicalDisks().OrderByDescending(d => d.Size).ToList();
+        var used = new HashSet<PhysicalDisk>();
+        var list = new List<MemberInfo>();
+
+        foreach (var p in probes.OrderByDescending(x => x.Total))
+        {
+            PhysicalDisk? disk = null;
+            if (p.Total > 0)
+            {
+                disk = disks.FirstOrDefault(d => !used.Contains(d) && d.Size >= p.Total && d.Size <= p.Total * 1.15);
+                if (disk != null) used.Add(disk);
+            }
+            list.Add(new MemberInfo
+            {
+                Id = p.Id,
+                MountPath = p.Mount,
+                BackendPath = p.Backend,
+                TotalBytes = p.Total,
+                FreeBytes = p.Free,
+                IsSsd = p.IsSsd,
+                Online = p.Total > 0,
+                Error = p.Error,
+                DiskName = disk?.Name,
+                DiskHealth = disk == null ? null : HealthText(disk.Health),
+                TemperatureCelsius = disk?.Temperature,
+            });
+        }
+
+        return new MemberRegistry(list.OrderBy(m => m.Id).ToList());
     }
 
     /// <summary>
     /// Choose the member for a new file: SSD first when it has room, otherwise the online member
-    /// with the highest free percentage (M1 policy; refined with watermarks in M4).
+    /// with the highest free percentage.
     /// </summary>
     public MemberInfo? ChooseForNewFile()
     {
@@ -87,6 +107,58 @@ public sealed class MemberRegistry
 
     public long TotalBytes => _members.Where(m => m.Online).Sum(m => m.TotalBytes);
     public long FreeBytes => _members.Where(m => m.Online).Sum(m => m.FreeBytes);
+
+    private static string HealthText(int health) => health switch
+    {
+        0 => "Healthy",
+        1 => "Warning",
+        2 => "Unhealthy",
+        _ => "Unknown",
+    };
+
+    private static List<PhysicalDisk> QueryPhysicalDisks()
+    {
+        var list = new List<PhysicalDisk>();
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                new ManagementScope(@"root\Microsoft\Windows\Storage"),
+                new ObjectQuery("SELECT DeviceId,FriendlyName,HealthStatus,Size FROM MSFT_PhysicalDisk"));
+            foreach (ManagementObject mo in searcher.Get())
+            {
+                list.Add(new PhysicalDisk
+                {
+                    DeviceId = mo["DeviceId"]?.ToString(),
+                    Name = mo["FriendlyName"]?.ToString(),
+                    Health = mo["HealthStatus"] is ushort h ? h : 5,
+                    Size = Convert.ToInt64(mo["Size"] ?? 0L),
+                });
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                new ManagementScope(@"root\Microsoft\Windows\Storage"),
+                new ObjectQuery("SELECT DeviceId,Temperature FROM MSFT_StorageReliabilityCounter"));
+            foreach (ManagementObject mo in searcher.Get())
+            {
+                var id = mo["DeviceId"]?.ToString();
+                var temp = mo["Temperature"];
+                if (id == null || temp == null) continue;
+                var d = list.FirstOrDefault(x => x.DeviceId == id);
+                if (d != null)
+                {
+                    var t = Convert.ToInt32(temp);
+                    if (t > 0 && t < 120) d.Temperature = t;
+                }
+            }
+        }
+        catch { }
+
+        return list;
+    }
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool GetDiskFreeSpaceEx(

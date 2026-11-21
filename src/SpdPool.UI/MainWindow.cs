@@ -148,7 +148,7 @@ public sealed class MainWindow : Window
             {
                 new TextBlock
                 {
-                    Text = m.Id,
+                    Text = $"{m.Id}  {m.DiskName ?? "未知磁盘"}",
                     FontSize = 16,
                     FontWeight = FontWeight.SemiBold,
                     Foreground = TextMain,
@@ -166,6 +166,15 @@ public sealed class MainWindow : Window
             Foreground = TextDim,
         };
 
+        var healthText = m.DiskHealth ?? "未知";
+        var tempText = m.TemperatureCelsius.HasValue ? $"{m.TemperatureCelsius} °C" : "N/A";
+        var stats = new TextBlock
+        {
+            Text = $"健康度：{healthText}   ·   温度：{tempText}   ·   使用率：{(m.Online ? $"{m.UsedPercent * 100:F2}%" : "—")}",
+            FontSize = 12,
+            Foreground = m.DiskHealth == "Unhealthy" ? Red : TextDim,
+        };
+
         var bar = new ProgressBar
         {
             Minimum = 0,
@@ -177,14 +186,6 @@ public sealed class MainWindow : Window
             Background = new SolidColorBrush(Color.Parse("#3A3D41")),
         };
 
-        var pct = new TextBlock
-        {
-            Text = m.Online ? $"{m.UsedPercent * 100:F1}%" : "—",
-            FontSize = 12,
-            Foreground = TextDim,
-            HorizontalAlignment = HorizontalAlignment.Right,
-        };
-
         return new Border
         {
             Background = Card,
@@ -193,7 +194,7 @@ public sealed class MainWindow : Window
             Child = new StackPanel
             {
                 Spacing = 6,
-                Children = { title, info, bar, pct },
+                Children = { title, info, stats, bar },
             },
         };
     }

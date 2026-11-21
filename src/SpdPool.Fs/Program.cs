@@ -436,7 +436,7 @@ internal static class Program
                 return 1;
             }
             var migrator = new Migrator(members);
-            migrator.Start();
+            if (args.Contains("--tiering")) migrator.Start();
             Console.WriteLine($"mounted {host2.MountPoint()} -> union of {string.Join(", ", members.Select(m => m.Id))}");
 
             if (serviceMode)

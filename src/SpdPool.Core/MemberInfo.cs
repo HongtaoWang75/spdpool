@@ -12,6 +12,11 @@ public sealed class MemberInfo
     public bool Online { get; init; }
     public string? Error { get; init; }
 
+    // Physical disk details (from MSFT_PhysicalDisk / reliability counters).
+    public string? DiskName { get; init; }
+    public string? DiskHealth { get; init; }          // Healthy / Warning / Unhealthy / Unknown
+    public int? TemperatureCelsius { get; init; }
+
     public long UsedBytes => TotalBytes - FreeBytes;
     public double UsedPercent => TotalBytes > 0 ? (double)UsedBytes / TotalBytes : 1.0;
     public double FreePercent => TotalBytes > 0 ? (double)FreeBytes / TotalBytes : 0.0;

@@ -268,14 +268,19 @@ internal sealed class UnionFileSystem : FileSystemBase
         {
             if (d.IsDir)
             {
-                // Remove every copy of the directory across members (recursively: the user
-                // asked to delete the whole tree, and delete-on-close may leave it non-empty).
+                // Windows deletes the children through the union first. Remove the physical
+                // directory from the owning member (empty by now); other members only have a
+                // stale empty copy if the folder predates the single-member creation policy.
+                if (d.RelPath == "\\") return;
+                var p = d.Member.Full(d.RelPath);
+                if (Directory.Exists(p)) Directory.Delete(p, false);
                 foreach (var m in _members)
                 {
-                    var p = m.Full(d.RelPath);
+                    if (m == d.Member) continue;
                     try
                     {
-                        if (Directory.Exists(p)) Directory.Delete(p, true);
+                        var q = m.Full(d.RelPath);
+                        if (Directory.Exists(q)) Directory.Delete(q, false);
                     }
                     catch { }
                 }
@@ -436,9 +441,9 @@ internal sealed class UnionFileSystem : FileSystemBase
             else
                 pattern = "*";
 
+            // Do NOT emit "." or "..": WinFsp handles them, and a bogus "." entry makes
+            // recursive deletes recurse into "<dir>\<dir>" and hang.
             var merged = new SortedList(StringComparer.OrdinalIgnoreCase);
-            if (d.RelPath != "\\")
-                merged.Add(".", new DirectoryInfo(d.Member.Full(d.RelPath)));
 
             foreach (var m in _members)
             {
@@ -460,10 +465,20 @@ internal sealed class UnionFileSystem : FileSystemBase
             index = 0;
             if (marker != null)
             {
-                var arr = new DictionaryEntry[d.Entries.Length];
-                for (int i = 0; i < arr.Length; i++) arr[i] = new DictionaryEntry(d.Entries[i].Name, d.Entries[i]);
-                index = Array.BinarySearch(arr, new DictionaryEntry(marker, null), Comparer);
-                index = index >= 0 ? index + 1 : ~index;
+                // Locate the marker entry. If it disappeared mid-enumeration (delete-then-enumerate
+                // is normal for recursive deletes), do NOT restart at 0 — that loops forever.
+                // End this enumeration; the caller will re-enumerate with a fresh handle.
+                var found = -1;
+                for (int i = 0; i < d.Entries.Length; i++)
+                {
+                    if (string.Equals(d.Entries[i].Name, marker, StringComparison.OrdinalIgnoreCase))
+                    {
+                        found = i;
+                        break;
+                    }
+                }
+                if (found < 0) { fileName = null; fi = default; return false; }
+                index = found + 1;
             }
         }
         else index = (int)context;

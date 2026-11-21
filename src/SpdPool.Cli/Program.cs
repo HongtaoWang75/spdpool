@@ -29,12 +29,14 @@ internal static class Program
         var reg = MemberRegistry.ProbeDefault();
         Console.WriteLine($"members root: {MemberRegistry.DefaultMountRoot}");
         Console.WriteLine();
-        Console.WriteLine($"{"ID",-4} {"Online",-6} {"SSD",-4} {"Total GB",10} {"Free GB",10} {"Used %",8}  Mount");
+        Console.WriteLine($"{"ID",-4} {"Online",-6} {"SSD",-4} {"Total GB",10} {"Free GB",10} {"Used %",9} {"Health",-10} {"Temp",-6} Disk / Mount");
         foreach (var m in reg.Members)
         {
             Console.WriteLine($"{m.Id,-4} {(m.Online ? "yes" : "no"),-6} {(m.IsSsd ? "yes" : "no"),-4} " +
                               $"{m.TotalBytes / 1073741824.0,10:F1} {m.FreeBytes / 1073741824.0,10:F1} " +
-                              $"{m.UsedPercent * 100,7:F1}%  {m.MountPath}" +
+                              $"{m.UsedPercent * 100,8:F2}% {(m.DiskHealth ?? "-"),-10} " +
+                              $"{(m.TemperatureCelsius.HasValue ? m.TemperatureCelsius + "C" : "-"),-6} " +
+                              $"{m.DiskName ?? "?"} / {m.MountPath}" +
                               (m.Error != null ? $"  [{m.Error}]" : ""));
         }
         Console.WriteLine();
