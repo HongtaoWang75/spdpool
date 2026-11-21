@@ -194,13 +194,13 @@ internal sealed class UnionFileSystem : FileSystemBase
         {
             if (isDir)
             {
-                // Create the directory on every member so any future file has its parent.
-                foreach (var m in _members)
-                {
-                    var p = m.Full(rel);
-                    if (!Directory.Exists(p)) Directory.CreateDirectory(p);
-                }
-                var d = new UnionDesc { Member = _members[0], RelPath = rel, IsDir = true };
+                // Create the directory on the chosen member only. A single copy keeps deletion
+                // simple; the union still merges same-named directories if they exist elsewhere.
+                var dirMember = ChooseMember();
+                EnsureParent(dirMember, rel);
+                var dirPath = dirMember.Full(rel);
+                if (!Directory.Exists(dirPath)) Directory.CreateDirectory(dirPath);
+                var d = new UnionDesc { Member = dirMember, RelPath = rel, IsDir = true };
                 fileDesc = d;
                 return GetInfo(d, out fi);
             }
@@ -268,11 +268,16 @@ internal sealed class UnionFileSystem : FileSystemBase
         {
             if (d.IsDir)
             {
-                // Remove the directory from every member (only succeeds when empty).
+                // Remove every copy of the directory across members (recursively: the user
+                // asked to delete the whole tree, and delete-on-close may leave it non-empty).
                 foreach (var m in _members)
                 {
                     var p = m.Full(d.RelPath);
-                    if (Directory.Exists(p)) Directory.Delete(p);
+                    try
+                    {
+                        if (Directory.Exists(p)) Directory.Delete(p, true);
+                    }
+                    catch { }
                 }
             }
             else
