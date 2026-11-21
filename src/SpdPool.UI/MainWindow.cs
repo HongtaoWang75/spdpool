@@ -107,7 +107,7 @@ public sealed class MainWindow : Window
             var reg = MemberRegistry.ProbeDefault();
             _poolSummary.Text =
                 $"总容量 {GiB(reg.TotalBytes)}  ·  可用 {GiB(reg.FreeBytes)}  ·  " +
-                $"已用 {UsedPercent(reg):F1}%  ·  成员 {reg.OnlineMembers.Count}/{reg.Members.Count} 在线";
+                $"已用 {UsedPercent(reg):F2}%  ·  成员 {reg.OnlineMembers.Count}/{reg.Members.Count} 在线";
 
             _membersPanel.Children.Clear();
             foreach (var m in reg.Members)

@@ -58,6 +58,18 @@ internal sealed class UnionFileSystem : FileSystemBase
 
     private static void ThrowNt(int status) => ThrowWin32((int)Win32FromNtStatus(status));
 
+    /// <summary>Stable non-zero file id (SMB/NTFS expect a valid FileId; 0 confuses clients).</summary>
+    private static ulong FileIdFor(string path)
+    {
+        uint h = 2166136261;
+        foreach (char c in path.ToUpperInvariant())
+        {
+            h ^= c;
+            h *= 16777619;
+        }
+        return h == 0 ? 1UL : h;
+    }
+
     private static void FillInfo(FileSystemInfo info, out FileInfo fi)
     {
         fi.FileAttributes = (uint)info.Attributes;
@@ -68,8 +80,8 @@ internal sealed class UnionFileSystem : FileSystemBase
         fi.LastAccessTime = (ulong)info.LastAccessTimeUtc.ToFileTimeUtc();
         fi.LastWriteTime = (ulong)info.LastWriteTimeUtc.ToFileTimeUtc();
         fi.ChangeTime = fi.LastWriteTime;
-        fi.IndexNumber = 0;
-        fi.HardLinks = 0;
+        fi.IndexNumber = FileIdFor(info.FullName);
+        fi.HardLinks = 1;
     }
 
     private int GetInfo(UnionDesc d, out FileInfo fi)
@@ -85,8 +97,8 @@ internal sealed class UnionFileSystem : FileSystemBase
             fi.LastAccessTime = (ulong)File.GetLastAccessTimeUtc(path).ToFileTimeUtc();
             fi.LastWriteTime = (ulong)File.GetLastWriteTimeUtc(path).ToFileTimeUtc();
             fi.ChangeTime = fi.LastWriteTime;
-            fi.IndexNumber = 0;
-            fi.HardLinks = 0;
+            fi.IndexNumber = FileIdFor(path);
+            fi.HardLinks = 1;
             return STATUS_SUCCESS;
         }
         FillInfo(new DirectoryInfo(d.Member.Full(d.RelPath)), out fi);
@@ -137,7 +149,8 @@ internal sealed class UnionFileSystem : FileSystemBase
         host.PassQueryDirectoryPattern = true;
         host.FlushAndPurgeOnCleanup = true;
         host.VolumeCreationTime = (ulong)DateTime.UtcNow.ToFileTimeUtc();
-        host.VolumeSerialNumber = 0;
+        // A valid serial is important: backup tools (GoodSync) treat 0000-0000 as invalid.
+        host.VolumeSerialNumber = 0x53504450; // "SPDP"
         return STATUS_SUCCESS;
     }
 
