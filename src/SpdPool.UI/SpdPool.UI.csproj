@@ -11,6 +11,9 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.6" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\SpdPool.Core\SpdPool.Core.csproj" />
   </ItemGroup>
 </Project>

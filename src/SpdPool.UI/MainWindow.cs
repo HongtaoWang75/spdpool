@@ -28,6 +28,7 @@ public sealed class MainWindow : Window
 
     public MainWindow()
     {
+        FontFamily = new FontFamily("avares://SpdPool.UI/Assets/fonts#HarmonyOS Sans SC");
         Title = "SpdPool 存储池";
         Width = 820;
         Height = 600;
@@ -150,7 +151,7 @@ public sealed class MainWindow : Window
                 var q = root.GetProperty("queueDepth").GetInt32();
                 var active = root.GetProperty("taskActive").GetBoolean();
                 var task = active ? root.GetProperty("task").GetString() : "无迁移任务";
-                _ioRate.Text = $"↑ {FmtRate(w)}   ↓ {FmtRate(r)}";
+                _ioRate.Text = $"↑ {FmtRate(r)}   ↓ {FmtRate(w)}";
                 _ioStatus.Text = $"队列 {q}  ·  {task}";
             }
             catch
