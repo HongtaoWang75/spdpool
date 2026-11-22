@@ -480,23 +480,10 @@ internal sealed class UnionFileSystem : FileSystemBase
     public override int SetSecurity(object fileNode, object fileDesc,
         System.Security.AccessControl.AccessControlSections sections, byte[] securityDescriptor)
     {
-        var d = (UnionDesc)fileDesc;
-        var path = d.Member.Full(d.RelPath);
-        IntPtr sd = IntPtr.Zero;
-        try
-        {
-            sd = Marshal.AllocHGlobal(securityDescriptor.Length);
-            Marshal.Copy(securityDescriptor, 0, sd, securityDescriptor.Length);
-            if (GetSecurityDescriptorDacl(sd, out var present, out var dacl, out _) && present)
-            {
-                var rc = SetNamedSecurityInfoW(path, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
-                    IntPtr.Zero, IntPtr.Zero, dacl, IntPtr.Zero);
-                return rc == 0 ? STATUS_SUCCESS : STATUS_ACCESS_DENIED;
-            }
-            return STATUS_SUCCESS;
-        }
-        catch { return STATUS_ACCESS_DENIED; }
-        finally { if (sd != IntPtr.Zero) Marshal.FreeHGlobal(sd); }
+        // Accept the update without calling SetNamedSecurityInfo: doing so rejected every
+        // file during GoodSync runs (Access Denied storms). The member NTFS keeps its
+        // inherited ACLs, which is right for a backup target.
+        return STATUS_SUCCESS;
     }
 
     public override int CanDelete(object fileNode, object fileDesc, string fileName)
