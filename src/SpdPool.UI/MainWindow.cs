@@ -24,6 +24,7 @@ public sealed class MainWindow : Window
     private readonly TextBlock _nextTarget = new();
     private readonly TextBlock _ioStatus = new();
     private readonly TextBlock _ioRate = new();
+    private bool _pulse;
     private readonly DispatcherTimer _timer;
 
     public MainWindow()
@@ -160,9 +161,27 @@ public sealed class MainWindow : Window
                 $"总容量 {GiB(reg.TotalBytes)}  ·  可用 {GiB(reg.FreeBytes)}  ·  " +
                 $"已用 {UsedPercent(reg):F2}%  ·  成员 {reg.OnlineMembers.Count}/{reg.Members.Count} 在线";
 
+            var memberActive = new Dictionary<string, bool>();
+            try
+            {
+                var sjson = File.ReadAllText(@"C:\ProgramData\SpdPool\stats.json");
+                using var sdoc = JsonDocument.Parse(sjson);
+                if (sdoc.RootElement.TryGetProperty("members", out var ms))
+                {
+                    foreach (var p in ms.EnumerateObject())
+                    {
+                        var w = p.Value.GetProperty("writeBytesPerSec").GetInt64();
+                        var r = p.Value.GetProperty("readBytesPerSec").GetInt64();
+                        memberActive[p.Name] = w > 0 || r > 0;
+                    }
+                }
+            }
+            catch { }
+            _pulse = !_pulse;
+
             _membersPanel.Children.Clear();
             foreach (var m in reg.Members)
-                _membersPanel.Children.Add(BuildMemberCard(m));
+                _membersPanel.Children.Add(BuildMemberCard(m, memberActive.GetValueOrDefault(m.Id)));
 
             var pick = reg.ChooseForNewFile();
             _nextTarget.Text = pick == null
@@ -210,7 +229,7 @@ public sealed class MainWindow : Window
         };
     }
 
-    private Control BuildMemberCard(MemberInfo m)
+    private Control BuildMemberCard(MemberInfo m, bool active)
     {
         var badge = new Border
         {
@@ -264,6 +283,8 @@ public sealed class MainWindow : Window
             Foreground = UsageBrush(m.UsedPercent),
             Background = new SolidColorBrush(Color.Parse("#3A3D41")),
             IsVisible = m.Online, // offline members have no meaningful usage
+            // Pulse while the member has IO activity.
+            Opacity = active ? (_pulse ? 1.0 : 0.45) : 1.0,
         };
 
         return new Border
