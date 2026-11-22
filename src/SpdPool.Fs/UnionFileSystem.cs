@@ -287,19 +287,17 @@ internal sealed class UnionFileSystem : FileSystemBase
         {
             if (d.IsDir)
             {
-                // Windows deletes the children through the union first. Remove the physical
-                // directory from the owning member (empty by now); other members only have a
-                // stale empty copy if the folder predates the single-member creation policy.
+                // Remove every copy of the directory tree across members. Recursion is safe
+                // now that ReadDirectoryEntry no longer emits "." (the old infinite loop source).
+                // Without it, folders that still existed on another member looked "deleted but
+                // still present" in the merged view.
                 if (d.RelPath == "\\") return;
-                var p = d.Member.Full(d.RelPath);
-                if (Directory.Exists(p)) Directory.Delete(p, false);
                 foreach (var m in _members)
                 {
-                    if (m == d.Member) continue;
                     try
                     {
-                        var q = m.Full(d.RelPath);
-                        if (Directory.Exists(q)) Directory.Delete(q, false);
+                        var p = m.Full(d.RelPath);
+                        if (Directory.Exists(p)) Directory.Delete(p, true);
                     }
                     catch { }
                 }
