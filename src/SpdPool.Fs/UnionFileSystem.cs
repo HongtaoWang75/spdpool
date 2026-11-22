@@ -348,6 +348,7 @@ internal sealed class UnionFileSystem : FileSystemBase
             Marshal.Copy(bytes, 0, buffer, read);
             bytesTransferred = (uint)read;
             PoolStats.OnRead(read);
+            PoolStats.OnMemberRead(d.Member.Id, read);
         }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
         HeatTracker.Touch(d.RelPath);
@@ -387,6 +388,7 @@ internal sealed class UnionFileSystem : FileSystemBase
             if (!writeToEndOfFile) d.Stream.Seek((long)offset, SeekOrigin.Begin);
             d.Stream.Write(bytes, 0, (int)length);
             PoolStats.OnWrite((int)length);
+            PoolStats.OnMemberWrite(d.Member.Id, (int)length);
         }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
         bytesTransferred = length;
@@ -429,6 +431,72 @@ internal sealed class UnionFileSystem : FileSystemBase
         if (d.Stream != null && (!setAllocationSize || (ulong)d.Stream.Length > newSize))
             d.Stream.SetLength((long)newSize);
         return GetInfo(d, out fi);
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern uint GetNamedSecurityInfoW(string name, uint objectType, uint securityInfo,
+        IntPtr owner, IntPtr group, out IntPtr dacl, out IntPtr sacl, out IntPtr sd);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern uint SetNamedSecurityInfoW(string name, uint objectType, uint securityInfo,
+        IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+
+    [DllImport("advapi32.dll")]
+    private static extern uint GetSecurityDescriptorLength(IntPtr sd);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr mem);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetSecurityDescriptorDacl(IntPtr sd, out bool daclPresent,
+        out IntPtr dacl, out bool daclDefaulted);
+
+    private const uint SE_FILE_OBJECT = 1;
+    private const uint OWNER_SECURITY_INFORMATION = 1;
+    private const uint GROUP_SECURITY_INFORMATION = 2;
+    private const uint DACL_SECURITY_INFORMATION = 4;
+    private const uint SACL_SECURITY_INFORMATION = 8;
+
+    public override int GetSecurity(object fileNode, object fileDesc, ref byte[] securityDescriptor)
+    {
+        var d = (UnionDesc)fileDesc;
+        var path = d.Member.Full(d.RelPath);
+        IntPtr sd = IntPtr.Zero;
+        try
+        {
+            var rc = GetNamedSecurityInfoW(path, SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                IntPtr.Zero, IntPtr.Zero, out _, out _, out sd);
+            if (rc != 0 || sd == IntPtr.Zero) return STATUS_ACCESS_DENIED;
+            var len = (int)GetSecurityDescriptorLength(sd);
+            securityDescriptor = new byte[len];
+            Marshal.Copy(sd, securityDescriptor, 0, len);
+            return STATUS_SUCCESS;
+        }
+        catch { return STATUS_ACCESS_DENIED; }
+        finally { if (sd != IntPtr.Zero) LocalFree(sd); }
+    }
+
+    public override int SetSecurity(object fileNode, object fileDesc,
+        System.Security.AccessControl.AccessControlSections sections, byte[] securityDescriptor)
+    {
+        var d = (UnionDesc)fileDesc;
+        var path = d.Member.Full(d.RelPath);
+        IntPtr sd = IntPtr.Zero;
+        try
+        {
+            sd = Marshal.AllocHGlobal(securityDescriptor.Length);
+            Marshal.Copy(securityDescriptor, 0, sd, securityDescriptor.Length);
+            if (GetSecurityDescriptorDacl(sd, out var present, out var dacl, out _) && present)
+            {
+                var rc = SetNamedSecurityInfoW(path, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+                    IntPtr.Zero, IntPtr.Zero, dacl, IntPtr.Zero);
+                return rc == 0 ? STATUS_SUCCESS : STATUS_ACCESS_DENIED;
+            }
+            return STATUS_SUCCESS;
+        }
+        catch { return STATUS_ACCESS_DENIED; }
+        finally { if (sd != IntPtr.Zero) Marshal.FreeHGlobal(sd); }
     }
 
     public override int CanDelete(object fileNode, object fileDesc, string fileName)

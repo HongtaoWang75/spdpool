@@ -451,7 +451,7 @@ internal static class Program
             }
             var migrator = new Migrator(members);
             migrator.Start(); // SSD tiering is on by default so the UI can show tasks
-            var statsWriter = new StatsWriter();
+            var statsWriter = new StatsWriter(members.Select(m => m.Id));
             statsWriter.Start();
             Console.WriteLine($"mounted {host2.MountPoint()} -> union of {string.Join(", ", members.Select(m => m.Id))}");
 
